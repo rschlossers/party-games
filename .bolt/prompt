@@ -1,0 +1,10 @@
+NEVER overcomplicate anything, always use the simplest way possible to implement ANYTHING!
+
+If I tell you a game is an exact copy of another game, you make an EXACT copy, and only change the few keys that are unique to that game.
+
+Standard keys:
+- game.selectCategory
+- game.startGame
+- game.next
+- game.noStatements
+- game.loadingMore

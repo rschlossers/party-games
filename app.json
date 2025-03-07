@@ -1,0 +1,69 @@
+{
+  "expo": {
+    "name": "Party Games",
+    "slug": "party-games",
+    "version": "1.0.1",
+    "orientation": "portrait",
+    "icon": "./assets/images/icon.png",
+    "scheme": "myapp",
+    "owner": "schlosser",
+    "privacy": "public",
+    "description": "Fun and entertaining party games to liven up any gathering",
+    "runtimeVersion": "1.0.0",
+    "userInterfaceStyle": "automatic",
+    "newArchEnabled": true,
+    "plugins": [
+      "expo-router",
+      [
+        "expo-ads-admob",
+        {
+          "androidAppId": "ca-app-pub-6111181835010052~9299277695",
+          "iosAppId": "ca-app-pub-6111181835010052~9299277695"
+        }
+      ]
+    ],
+    "ios": {
+      "supportsTablet": true,
+      "runtimeVersion": "1.0.0",
+      "buildNumber": "2",
+      "config": {
+        "googleMobileAdsAppId": "ca-app-pub-6111181835010052~9299277695"
+      },
+      "bundleIdentifier": "dk.hyg.partygames",
+      "infoPlist": {
+        "NSUserTrackingUsageDescription": "This identifier will be used to deliver personalized ads to you.",
+        "SKAdNetworkItems": [
+          {
+            "SKAdNetworkIdentifier": "cstr6suwn9.skadnetwork"
+          }
+        ]
+      }
+    },
+    "android": {
+      "package": "dk.hyg.partygames",
+      "versionCode": 2,
+      "runtimeVersion": "1.0.0",
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/images/icon.png",
+        "backgroundColor": "#6C5CE7"
+      },
+      "permissions": [],
+      "config": {
+        "googleMobileAdsAppId": "ca-app-pub-6111181835010052~9299277695"
+      }
+    },
+    "web": {
+      "bundler": "metro",
+      "output": "single",
+      "favicon": "./assets/images/favicon.png"
+    },
+    "experiments": {
+      "typedRoutes": true
+    },
+    "extra": {
+      "eas": {
+        "projectId": "75cded2d-d384-49cf-ba00-45992231177f"
+      }
+    }
+  }
+}

@@ -204,6 +204,15 @@ export const GAMES: GameConfig[] = [
     dashboard: 'funStuff'
   },
   {
+    id: 'conversation-starters',
+    path: 'conversation-starters',
+    titleKey: 'conversationStarters.title',
+    descriptionKey: 'conversationStarters.description',
+    icon: 'chat-outline',
+    enabled: true,
+    dashboard: 'funStuff'
+  },
+  {
     id: 'random-letter',
     path: 'random-letter',
     titleKey: 'randomLetter.title',
@@ -303,15 +312,6 @@ export const GAMES: GameConfig[] = [
     dashboard: 'partyTools'
   },
   {
-    id: 'wheel-of-fortune',
-    path: 'wheel-of-fortune',
-    titleKey: 'wheelOfFortune.title',
-    descriptionKey: 'wheelOfFortune.description',
-    icon: 'wheel-barrow',
-    enabled: true,
-    dashboard: 'partyTools'
-  },
-  {
     id: 'blood-alcohol-calculator',
     path: 'blood-alcohol-calculator',
     titleKey: 'bloodAlcoholCalculator.title',
@@ -330,7 +330,7 @@ export const GAMES: GameConfig[] = [
     dashboard: 'partyTools'
   },
   {
-    id: 'photo- challenges',
+    id: 'photo-challenges',
     path: 'photo-challenges',
     titleKey: 'photoChallenges.title',
     descriptionKey: 'photoChallenges.description',

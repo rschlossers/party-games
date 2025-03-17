@@ -1,27 +1,27 @@
-import { View, Text, StyleSheet, ScrollView, Pressable } from 'react-native';
-import { MaterialCommunityIcons } from '@expo/vector-icons';
+import { View, Text, StyleSheet, ScrollView, Pressable, Image } from 'react-native';
 import { useLanguage } from '../utils/i18n';
-import { Link } from 'expo-router';
 import { useGameSettings } from '../utils/gameSettings';
-import { GAMES } from '../utils/gameConfig';
+import { Link } from 'expo-router';
+import { FunStuffSlider } from '../components/FunStuffSlider';
+
+// Game icons mapping
+const gameIcons = {
+  'date-ideas': require('../assets/images/game-icons/date-ideas.png'),
+  'pickup-lines': require('../assets/images/game-icons/pickup-lines.png'),
+  'joke-generator': require('../assets/images/game-icons/joke-generator.png'),
+  'random-theme': require('../assets/images/game-icons/random-theme.png'),
+  'birthday-greetings': require('../assets/images/game-icons/birthday-greetings.png'),
+  'conversation-starters': require('../assets/images/game-icons/conversation-starters.png')
+} as const;
 
 export default function FunStuff() {
   const { t, language } = useLanguage();
-  const { isGameEnabled } = useGameSettings();
+  const { games, isLoading } = useGameSettings();
 
-  // Get only fun stuff games from GAMES config
-  const funStuffGames = GAMES
-    .filter(game => game.dashboard === 'funStuff' && isGameEnabled(game.id))
-    .sort((a, b) => t(a.titleKey).localeCompare(t(b.titleKey), language));
-
-  // Game color assignments based on icon
-  function getGameColor(gameId: string) {
-    const colorMap: Record<string, string> = {
-      'pickup-lines': '#E91E63',
-      'date-ideas': '#E91E63',
-    };
-    return colorMap[gameId] || '#6C5CE7'; // Default purple color
-  }
+  // Only show enabled games on the fun stuff dashboard and sort them alphabetically by title
+  const enabledGames = !isLoading ? games
+    .filter(game => game.enabled && game.dashboard === 'funStuff')
+    .sort((a, b) => t(a.titleKey).localeCompare(t(b.titleKey), language)) : [];
 
   return (
     <ScrollView style={styles.container}>
@@ -32,52 +32,28 @@ export default function FunStuff() {
         {t('funStuff.description')}
       </Text>
       
-      <View style={styles.cardList}>
-        {funStuffGames.map(game => (
+      <FunStuffSlider />
+      
+      <View style={styles.gamesGrid}>
+        {enabledGames.map(game => {
+          const icon = gameIcons[game.id as keyof typeof gameIcons];
+          if (!icon) return null;
+
+          return (
           <Link key={game.id} href={`/${game.path}`} asChild>
-            <Pressable style={styles.card}>
-              <View style={[styles.iconContainer, { backgroundColor: getGameColor(game.id) }]}>
-                <MaterialCommunityIcons
-                  name={game.icon as any}
-                  size={32}
-                  color="#FFF"
-                />
-              </View>
-              <View style={styles.cardTextContent}>
-                <Text style={styles.cardTitle}>
-                  {t(game.titleKey)}
-                </Text>
-                <Text style={styles.cardDescription}>
-                  {t(game.descriptionKey)}
-                </Text>
-              </View>
-              <MaterialCommunityIcons
-                name="chevron-right"
-                size={24}
-                color="#6C5CE7"
+            <Pressable style={styles.gameCard}>
+              <Image
+                source={icon}
+                style={styles.gameIcon}
+                resizeMode="cover"
               />
+              <Text style={styles.gameTitle}>
+                {t(game.titleKey)}
+              </Text>
             </Pressable>
           </Link>
-        ))}
-        
-        {/* Coming Soon Card */}
-        <View style={[styles.card, styles.comingSoonCard]}>
-          <View style={[styles.iconContainer, { backgroundColor: '#CCCCCC' }]}>
-            <MaterialCommunityIcons
-              name="clock-outline"
-              size={32}
-              color="#FFF"
-            />
-          </View>
-          <View style={styles.cardTextContent}>
-            <Text style={styles.comingSoonTitle}>
-              {t('index.comingSoon')}
-            </Text>
-            <Text style={styles.comingSoonDescription}>
-              {t('index.moreGames')}
-            </Text>
-          </View>
-        </View>
+          );
+        })}
       </View>
     </ScrollView>
   );
@@ -87,72 +63,53 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#FFFFFF',
-    padding: 20,
+    paddingVertical: 20
   },
   title: {
     fontSize: 28,
     fontWeight: 'bold',
     color: '#000',
     marginBottom: 8,
-    textAlign: 'center',
+    textAlign: 'center'
   },
   description: {
     fontSize: 16,
     color: '#666',
     marginBottom: 24,
     textAlign: 'center',
-    paddingHorizontal: 12,
+    paddingHorizontal: 12
   },
-  cardList: {
-    gap: 16,
-  },
-  card: {
-    backgroundColor: '#fff',
-    borderRadius: 16,
+  gamesGrid: { 
     flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 16,
+    paddingHorizontal: 20,
+    justifyContent: 'center',
+    paddingVertical: 16,
+  },
+  gameCard: {
+    width: 140,
     alignItems: 'center',
-    padding: 16,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 20,
+    padding: 12,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.1,
     shadowRadius: 8,
     elevation: 3,
   },
-  iconContainer: {
-    width: 56,
-    height: 56,
-    borderRadius: 28,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginRight: 16,
+  gameIcon: {
+    width: 100,
+    height: 100,
+    borderRadius: 16,
+    marginBottom: 12,
   },
-  cardTextContent: {
-    flex: 1,
-  },
-  cardTitle: {
-    color: '#000',
-    fontSize: 18,
-    fontWeight: 'bold',
-    marginBottom: 4,
-  },
-  cardDescription: {
-    color: '#666',
-    fontSize: 14,
-    lineHeight: 20,
-  },
-  comingSoonCard: {
-    backgroundColor: '#F8F8F8',
-    opacity: 0.8,
-  },
-  comingSoonTitle: {
-    color: '#666',
-    fontSize: 18,
-    fontWeight: 'bold',
-    marginBottom: 4,
-  },
-  comingSoonDescription: {
-    color: '#999',
-    fontSize: 14,
-    lineHeight: 20,
-  },
+  gameTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#333',
+    textAlign: 'center',
+    lineHeight: 20
+  }
 });

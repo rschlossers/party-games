@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, Pressable, ActivityIndicator, ScrollView } from 'react-native';
+import { View, Text, StyleSheet, Pressable, ActivityIndicator, ScrollView, SafeAreaView, Image, Dimensions, StatusBar } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useLanguage } from '../utils/i18n';
 import { supabase } from '../utils/supabase';
@@ -11,6 +11,7 @@ type Language = 'en' | 'da';
 
 const BATCH_SIZE = 1000; // Supabase's maximum rows per request
 const RANDOM_CATEGORY_ID = 'random';
+const { width } = Dimensions.get('window');
 
 export default function BackToBack() {
   const { t, language } = useLanguage();
@@ -33,8 +34,8 @@ export default function BackToBack() {
     const initializeGame = async () => {
       try {
         await fetchCategories();
-        // Fetch statements for random category by default
-        await fetchStatements(RANDOM_CATEGORY_ID);
+        // Don't pre-load all statements, just set loading to false
+        setIsLoading(false);
       } catch (err) {
         console.error('Failed to initialize game:', err);
       }
@@ -44,13 +45,11 @@ export default function BackToBack() {
   }, []);
 
   useEffect(() => {
-    if (selectedCategory) {
+    if (selectedCategory && gameStarted) {
+      // Load statements when a category is selected and game is started
       fetchStatements(selectedCategory);
-      setPage(0);
-      setHasMoreStatements(true);
-      setStatements([]);
     }
-  }, [selectedCategory]);
+  }, [selectedCategory, gameStarted]);
 
   const fetchCategories = async () => {
     try {
@@ -67,7 +66,7 @@ export default function BackToBack() {
       if (retryCount < MAX_RETRIES) {
         // Retry after a short delay
         setTimeout(() => {
-          setRetryCount(prev => prev + 1);
+          setRetryCount((prev: number) => prev + 1);
           fetchCategories();
         }, 1000 * (retryCount + 1)); // Exponential backoff
       } else {
@@ -154,11 +153,11 @@ export default function BackToBack() {
         setCurrentStatement(nextIndex);
       } else {
         // Shuffle the existing statements when we reach the end
-        setStatements(prevStatements => {
+        setStatements((prevStatements: Statement[]) => {
           const shuffled = [...prevStatements];
           for (let i = shuffled.length - 1; i > 0; i--) {
             const j = Math.floor(Math.random() * (i + 1));
-            [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+            [shuffled[i], shuffled[j]] = [shuffled[i], shuffled[j]];
           }
           return shuffled;
         });
@@ -168,191 +167,179 @@ export default function BackToBack() {
   };
 
   const startGame = () => {
-    if (statements.length > 0) {
-      setGameStarted(true);
-    }
-  };
-
-  const goBackToCategories = () => {
-    setSelectedCategory(null);
-    setGameStarted(false); // Also reset the game state
-    setCurrentStatement(0);
+    setGameStarted(true);
+    fetchStatements(selectedCategory || RANDOM_CATEGORY_ID);
   };
 
   if (isLoading) {
     const loadingText = retryCount > 0 
-      ? t('game.retrying', { count: retryCount })
+      ? t('game.retrying')
       : t('game.loading');
       
     return (
-      <View style={styles.container}>
-        <Text style={styles.title}>{loadingText}</Text>
-        <ActivityIndicator size="large" color="#6C5CE7" />
+      <View style={styles.loadingContainer}>
+        <ActivityIndicator size="large" color="#FF5E62" />
+        <Text style={styles.loadingText}>{loadingText}</Text>
       </View>
     );
   }
 
   if (error) {
     return (
-      <View style={styles.container}>
+      <View style={styles.loadingContainer}>
         <Text style={styles.errorText}>{error}</Text>
       </View>
     );
   }
 
-  if (!gameStarted) {
-    return (
-      <ScrollView 
-        style={styles.container} 
-        contentContainerStyle={styles.categoryScrollContent}
-        bounces={true}
-        showsVerticalScrollIndicator={true}>
-        <View style={styles.innerContainer}>
-        <Text style={styles.title}>
-          {t('backToBack.categories.title')}
-        </Text>
-        
-        <View style={styles.dropdownContainer}>
-          <Pressable
-            style={styles.dropdown}
-            onPress={() => setDropdownOpen(!dropdownOpen)}
-            disabled={isLoading}>
-            <Text style={styles.dropdownText}>
-              {selectedCategory === RANDOM_CATEGORY_ID
-                ? t('game.randomCategory')
-                : selectedCategory
-                  ? categories.find(c => c.id === selectedCategory)?.[`name_${language as Language}` as 'name_en' | 'name_da']
-                  : t('game.selectCategory')}
-            </Text>
-            <MaterialCommunityIcons
-              name={dropdownOpen ? 'chevron-up' : 'chevron-down'}
-              size={24}
-              color="#000"
-            />
-          </Pressable>
-          
-          {dropdownOpen && (
-            <View style={styles.dropdownList}>
-              <Pressable
-                key={RANDOM_CATEGORY_ID}
-                style={[
-                  styles.dropdownItem,
-                  selectedCategory === RANDOM_CATEGORY_ID && styles.selectedDropdownItem,
-                ]}
-                onPress={() => {
-                  setSelectedCategory(RANDOM_CATEGORY_ID);
-                  setDropdownOpen(false);
-                  fetchStatements(RANDOM_CATEGORY_ID);
-                }}>
-                <Text
-                  style={[
-                    styles.dropdownItemText,
-                    selectedCategory === RANDOM_CATEGORY_ID && styles.selectedDropdownItemText,
-                  ]}>
-                  {t('game.randomCategory')}
-                </Text>
-              </Pressable>
-              {categories.map((category) => (
-                <Pressable
-                  key={category.id}
-                  style={[
-                    styles.dropdownItem,
-                    selectedCategory === category.id && styles.selectedDropdownItem,
-                  ]}
-                  onPress={() => {
-                    setSelectedCategory(category.id);
-                    setDropdownOpen(false); 
-                    fetchStatements(category.id);
-                  }}>
-                  <Text
-                    style={[
-                      styles.dropdownItemText,
-                      selectedCategory === category.id && styles.selectedDropdownItemText,
-                    ]}>
-                    {category[`name_${language as Language}` as 'name_en' | 'name_da']}
-                  </Text>
-                </Pressable>
-              ))}
-            </View>
-          )}
-        </View>
-        </View>
-
-        <Pressable
-          style={[
-            styles.startButton,
-            !selectedCategory && styles.startButtonDisabled,
-          ]}
-          onPress={startGame}
-          disabled={!selectedCategory}>
-          <Text style={styles.startButtonText}>
-            {t('game.startGame')}
-          </Text>
-        </Pressable>
-      </ScrollView>
-    );
-  }
-
   const currentS = statements[currentStatement] || null;
+  const categoryName = selectedCategory === RANDOM_CATEGORY_ID
+    ? t('game.randomCategory')
+    : selectedCategory
+      ? categories.find((c: any) => c.id === selectedCategory)?.[`name_${language as Language}` as 'name_en' | 'name_da']
+      : t('game.selectCategory');
 
   return (
-    <ScrollView 
-      style={styles.container} 
-      contentContainerStyle={styles.gameScrollContent}
-      bounces={true}
-      showsVerticalScrollIndicator={true}>
-      <Pressable
-        onPress={goBackToCategories}
-        style={styles.backButton}>
-        <MaterialCommunityIcons
-          name="arrow-left"
-          size={24}
-          color="#000"
-        />
-        <Text style={styles.backButtonText}>
-          {t('backToBack.categories.title')}
-        </Text>
-      </Pressable>
-
-      <Text style={styles.title}>
-        {t('backToBack.title')}
-      </Text>
+    <SafeAreaView style={styles.container}>
+      <StatusBar barStyle="dark-content" />
       
-      <View style={styles.statementContainer}>
-        <View style={styles.statement}>
-          {currentS ? (
-            <>
-              <Text style={styles.statementText}>
-                {currentS[`text_${language as Language}` as 'text_en' | 'text_da']}
-              </Text>
-              <Text style={styles.statementCount}>
-                {currentStatement + 1} / {statements.length}
-                {hasMoreStatements ? '+' : ''}
-              </Text>
-            </>
-          ) : (
-            <Text style={styles.statementText}>
-              {t('game.noStatements')}
-            </Text>
-          )}
-        </View>
+      {/* Small back button in corner */}
+      <Pressable 
+        style={styles.backButton}
+        onPress={() => {
+          // Navigate back to game overview
+          if (typeof window !== 'undefined') {
+            window.history.back();
+          }
+        }}
+      >
+        <MaterialCommunityIcons name="arrow-left" size={20} color="#666666" />
+        <Text style={styles.backButtonText}>{t('game.back')}</Text>
+      </Pressable>
+      
+      {/* Game Icon ABOVE headline */}
+      <View style={styles.iconContainer}>
+        <Image 
+          source={require('../assets/images/game-icons/back-to-back.png')} 
+          style={styles.gameIcon}
+          resizeMode="contain"
+        />
       </View>
       
-      {isLoadingMore && (
-        <View style={styles.loadingMoreContainer}>
-          <ActivityIndicator size="small" color="#6C5CE7" />
-          <Text style={styles.loadingMoreText}>{t('game.loadingMore')}</Text>
+      {/* Headline below icon */}
+      <Text style={styles.headerTitle}>{t('backToBack.title')}</Text>
+      
+      {/* Category Selector */}
+      <View style={styles.dropdownContainer}>
+        <Pressable
+          style={styles.dropdown}
+          onPress={() => setDropdownOpen(!dropdownOpen)}
+          disabled={isLoading}>
+          <Text style={styles.dropdownText}>{categoryName}</Text>
+          <MaterialCommunityIcons
+            name={dropdownOpen ? 'chevron-up' : 'chevron-down'}
+            size={24}
+            color="#FF5E62"
+          />
+        </Pressable>
+      </View>
+      
+      {/* Game Content */}
+      {gameStarted && currentS ? (
+        <View style={styles.questionContainer}>
+          <View style={styles.questionCard}>
+            <Text style={styles.questionText}>
+              {currentS[`text_${language as Language}` as 'text_en' | 'text_da']}
+            </Text>
+          </View>
+          
+          {/* Next Button */}
+          <Pressable
+            onPress={nextStatement}
+            style={({pressed}) => [
+              styles.nextButton,
+              pressed && styles.nextButtonPressed
+            ]}>
+            <MaterialCommunityIcons name="arrow-right" size={24} color="#FFFFFF" />
+          </Pressable>
+        </View>
+      ) : (
+        <View style={styles.startContainer}>
+          <Pressable
+            style={({pressed}) => [
+              styles.startButton,
+              pressed && styles.startButtonPressed
+            ]}
+            onPress={startGame}>
+            <Text style={styles.startButtonText}>{t('game.startGame')}</Text>
+          </Pressable>
         </View>
       )}
       
-      <Pressable
-        onPress={nextStatement}
-        style={styles.nextButton}>
-        <Text style={styles.nextButtonText}>
-          {t('game.next')}
+      {/* Game Description */}
+      <View style={styles.gameInfoContainer}>
+        <Text style={styles.gameInfoText}>
+          {t('backToBack.description')}
         </Text>
-      </Pressable>
-    </ScrollView>
+      </View>
+      
+      {/* Dropdown List - Keep outside main content to handle z-index */}
+      {dropdownOpen && (
+        <View style={styles.dropdownListContainer}>
+          <Pressable 
+            style={styles.dropdownBackdrop}
+            onPress={() => setDropdownOpen(false)}
+          />
+          <View style={styles.dropdownListWrapper}>
+            <ScrollView style={styles.dropdownList} bounces={false}>
+              <Pressable
+                key={RANDOM_CATEGORY_ID}
+                style={styles.dropdownItem}
+                onPress={() => {
+                  setSelectedCategory(RANDOM_CATEGORY_ID);
+                  setDropdownOpen(false);
+                  if (gameStarted) {
+                    fetchStatements(RANDOM_CATEGORY_ID);
+                  }
+                }}>
+                <Text style={[
+                  styles.dropdownItemText,
+                  selectedCategory === RANDOM_CATEGORY_ID && styles.selectedDropdownItemText,
+                ]}>
+                  {t('game.randomCategory')}
+                </Text>
+                {selectedCategory === RANDOM_CATEGORY_ID && (
+                  <MaterialCommunityIcons name="check" size={22} color="#FF5E62" />
+                )}
+              </Pressable>
+              
+              {categories.map((category: any) => (
+                <Pressable
+                  key={category.id}
+                  style={styles.dropdownItem}
+                  onPress={() => {
+                    setSelectedCategory(category.id);
+                    setDropdownOpen(false);
+                    if (gameStarted) {
+                      fetchStatements(category.id);
+                    }
+                  }}>
+                  <Text style={[
+                    styles.dropdownItemText,
+                    selectedCategory === category.id && styles.selectedDropdownItemText,
+                  ]}>
+                    {category[`name_${language as Language}` as 'name_en' | 'name_da']}
+                  </Text>
+                  {selectedCategory === category.id && (
+                    <MaterialCommunityIcons name="check" size={22} color="#FF5E62" />
+                  )}
+                </Pressable>
+              ))}
+            </ScrollView>
+          </View>
+        </View>
+      )}
+    </SafeAreaView>
   );
 }
 
@@ -360,159 +347,210 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#FFFFFF',
-    width: '100%',
   },
-  categoryScrollContent: {
-    flexGrow: 1,
-    minHeight: '100%',
+  backButton: {
+    position: 'absolute',
+    top: 12,
+    left: 12,
+    zIndex: 10,
+    flexDirection: 'row',
+    alignItems: 'center',
   },
-  gameScrollContent: {
-    flexGrow: 1,
-    minHeight: '100%',
-    paddingBottom: 20,
+  backButtonText: {
+    fontSize: 14,
+    fontWeight: '400',
+    color: '#666666',
+    marginLeft: 2,
   },
-  innerContainer: {
-    flex: 1,
-    padding: 16,
+  iconContainer: {
+    alignItems: 'center',
+    marginTop: 48,
+    marginBottom: 12,
   },
+  gameIcon: {
+    width: 100,
+    height: 100,
+  },
+  headerTitle: {
+    fontSize: 24,
+    fontWeight: '600',
+    color: '#000000',
+    textAlign: 'center',
+    marginBottom: 24,
+  },
+  // Dropdown styles
   dropdownContainer: {
-    position: 'relative',
-    zIndex: 1,
-    marginBottom: 16,
+    paddingHorizontal: 20,
+    marginBottom: 20,
+    zIndex: 5,
   },
   dropdown: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    padding: 20,
-    backgroundColor: '#F8F8F8',
-    borderRadius: 16,
+    backgroundColor: '#F5F5F5',
+    borderRadius: 10,
+    padding: 16,
+    borderWidth: 1,
+    borderColor: '#E5E5E5',
   },
   dropdownText: {
-    fontSize: 18,
-    color: '#000',
+    fontSize: 16,
+    color: '#333333',
+    fontWeight: '500',
   },
-  dropdownList: {
-    position: 'absolute',
-    top: 'auto',
-    left: 0,
-    right: 0,
-    maxHeight: 200,
+  // Question display
+  questionContainer: {
+    flex: 1,
+    padding: 20,
+    alignItems: 'center',
+    justifyContent: 'flex-start',
+  },
+  questionCard: {
+    width: '100%',
     backgroundColor: '#FFFFFF',
-    borderRadius: 12,
-    marginTop: 4,
-    padding: 8,
+    borderRadius: 16,
+    padding: 24,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.25,
-    shadowRadius: 3.84,
-    elevation: 8,
-    zIndex: 1000,
-    overflow: 'scroll',
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 2,
+    borderWidth: 1,
+    borderColor: '#EEEEEE',
+    marginBottom: 30,
   },
-  dropdownItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    padding: 12,
-    borderRadius: 8,
-    marginVertical: 2,
-  },
-  selectedDropdownItem: {
-    backgroundColor: '#6C5CE7',
-  },
-  dropdownItemText: {
-    fontSize: 16,
-    color: '#000',
-    width: '100%',
-  },
-  selectedDropdownItemText: {
-    color: '#000',
-    fontWeight: 'bold',
-  },
-  backButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    padding: 12,
-  },
-  backButtonText: {
-    fontSize: 16,
-    marginLeft: 8,
-    color: '#000',
-  },
-  title: {
-    fontSize: 28,
-    fontWeight: 'bold',
+  questionText: {
+    fontSize: 22,
+    color: '#333333',
+    lineHeight: 30,
     textAlign: 'center',
-    marginVertical: 12,
-    paddingHorizontal: 16,
-    color: '#000',
-  },
-  statementContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    padding: 16,
-    minHeight: 300,
-  },
-  startButton: {
-    backgroundColor: '#6C5CE7',
-    padding: 20,
-    borderRadius: 16,
-    alignItems: 'center',
-    margin: 16,
-  },
-  startButtonDisabled: {
-    backgroundColor: '#E0E0E0',
-  },
-  startButtonText: {
-    color: '#000',
-    fontSize: 18,
-    fontWeight: 'bold',
-  },
-  statement: {
-    padding: 32,
-    backgroundColor: '#6C5CE7',
-    borderRadius: 15,
-    minHeight: 200,
-    justifyContent: 'center',
-  },
-  statementText: {
-    color: '#fff',
-    fontSize: 24,
-    fontWeight: 'bold',
-    textAlign: 'center',
-  },
-  statementCount: {
-    color: 'rgba(255, 255, 255, 0.7)',
-    fontSize: 14,
-    textAlign: 'center',
-    marginTop: 16,
-  },
-  loadingMoreContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    padding: 8,
-    gap: 8,
-  },
-  loadingMoreText: {
-    color: '#666',
-    fontSize: 14,
+    fontWeight: '500',
   },
   nextButton: {
-    backgroundColor: '#6C5CE7',
+    backgroundColor: '#FF5E62',
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    justifyContent: 'center',
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  nextButtonPressed: {
+    opacity: 0.9,
+    transform: [{ scale: 0.95 }],
+  },
+  // Start Game
+  startContainer: {
+    flex: 1,
+    paddingHorizontal: 20,
+    paddingTop: 20,
+  },
+  startButton: {
+    backgroundColor: '#FF5E62',
+    paddingVertical: 16,
+    paddingHorizontal: 32,
+    borderRadius: 10,
+    width: '100%',
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 2,
+  },
+  startButtonPressed: {
+    opacity: 0.9,
+    transform: [{ scale: 0.98 }],
+  },
+  startButtonText: {
+    color: '#FFFFFF',
+    fontSize: 18,
+    fontWeight: '600',
+  },
+  // Game info
+  gameInfoContainer: {
     padding: 20,
-    borderRadius: 16,
-    margin: 16,
+    paddingBottom: 30,
+    alignItems: 'center',
+  },
+  gameInfoText: {
+    color: '#666666',
+    fontSize: 14,
+    textAlign: 'center',
+    lineHeight: 20,
+  },
+  // Keep all existing dropdown list styles
+  loadingContainer: {
+    flex: 1,
+    backgroundColor: '#FFFFFF',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  loadingText: {
+    color: '#666666',
+    fontSize: 18,
+    marginTop: 16,
   },
   errorText: {
     color: '#FF3B30',
     fontSize: 16,
     textAlign: 'center',
+    maxWidth: '80%',
   },
-  nextButtonText: {
-    color: '#000',
-    textAlign: 'center',
-    fontSize: 18,
-    fontWeight: 'bold',
+  dropdownBackdrop: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: 'rgba(0,0,0,0.4)',
   },
+  dropdownListContainer: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    justifyContent: 'center',
+    alignItems: 'center',
+    zIndex: 100,
+  },
+  dropdownListWrapper: {
+    width: width - 40,
+    maxHeight: 400,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 10,
+    overflow: 'hidden',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.2,
+    shadowRadius: 8,
+    elevation: 5,
+  },
+  dropdownList: {
+    width: '100%',
+    maxHeight: '100%',
+  },
+  dropdownItem: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: 16,
+    paddingHorizontal: 20,
+    borderBottomWidth: 1,
+    borderBottomColor: '#F0F0F0',
+  },
+  dropdownItemText: {
+    fontSize: 16,
+    color: '#333333',
+  },
+  selectedDropdownItemText: {
+    color: '#FF5E62',
+    fontWeight: '600',
+  }
 });

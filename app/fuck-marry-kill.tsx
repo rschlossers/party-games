@@ -10,81 +10,46 @@ type Gender = Database['public']['Tables']['fuck_marry_kill_genders']['Row'];
 type Statement = Database['public']['Tables']['fuck_marry_kill_statements']['Row'];
 type Language = 'en' | 'da';
 
-const BATCH_SIZE = 1000; // Supabase's maximum rows per request
-const RANDOM_CATEGORY_ID = 'random';
+interface Choice {
+  id: string;
+  choice: 'fuck' | 'marry' | 'kill' | null;
+}
 
 export default function FuckMarryKill() {
   const { t, language } = useLanguage();
-  const [currentStatement, setCurrentStatement] = useState(0);
-  const [selectedCategory, setSelectedCategory] = useState<Category['id'] | null>(RANDOM_CATEGORY_ID);
+  const [selectedCategory, setSelectedCategory] = useState<Category['id'] | null>(null);
   const [selectedGender, setSelectedGender] = useState<Gender['id'] | 'mixed' | null>(null);
   const [categories, setCategories] = useState<Category[]>([]);
+  const [dropdownOpen, setDropdownOpen] = useState<'gender' | 'category' | null>(null);
   const [genders, setGenders] = useState<Gender[]>([]);
   const [statements, setStatements] = useState<Statement[]>([]);
+  const [currentRound, setCurrentRound] = useState<Statement[]>([]);
+  const [choices, setChoices] = useState<Choice[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [gameStarted, setGameStarted] = useState(false);
-  const [dropdownOpen, setDropdownOpen] = useState(false);
-  const [retryCount, setRetryCount] = useState(0);
-  const MAX_RETRIES = 3;
-  
-  // Initialize game on mount
-  useEffect(() => {
-    const initializeGame = async () => {
-      try {
-        await fetchCategories();
-        await fetchGenders();
-        // Fetch statements for random category by default
-        await fetchStatements(RANDOM_CATEGORY_ID);
-      } catch (err) {
-        console.error('Failed to initialize game:', err);
-      }
-    };
-    
-    initializeGame();
-  }, []);
 
   useEffect(() => {
-    if (selectedCategory) {
-      fetchStatements(selectedCategory);
-      setPage(0);
-      setHasMoreStatements(true);
-      setStatements([]);
-    }
-  }, [selectedCategory]);
+    fetchCategories();
+    fetchGenders();
+  }, []);
 
   const fetchCategories = async () => {
     try {
-      setIsLoading(true);
-      const { data, error } = await supabase 
+      const { data, error } = await supabase
         .from('fuck_marry_kill_categories')
         .select('*');
       
       if (error) throw error;
       setCategories(data || []);
-      setError(null);
     } catch (err) {
-      console.error(err);
-      if (retryCount < MAX_RETRIES) {
-        // Retry after a short delay
-        setTimeout(() => {
-          setRetryCount(prev => prev + 1);
-          fetchCategories();
-        }, 1000 * (retryCount + 1)); // Exponential backoff
-      } else {
-        setError(t('game.fetchError'));
-        setRetryCount(0);
-      }
-      // Keep any existing categories if we have them
-      return;
-    } finally {
-      setIsLoading(false);
+      console.error('Error fetching categories:', err);
+      setError(t('game.fetchError'));
     }
   };
 
   const fetchGenders = async () => {
     try {
-      setIsLoading(true);
       const { data, error } = await supabase
         .from('fuck_marry_kill_genders')
         .select('*');
@@ -92,193 +57,303 @@ export default function FuckMarryKill() {
       if (error) throw error;
       setGenders(data || []);
     } catch (err) {
-      setError('Failed to load genders');
-      console.error(err);
+      console.error('Error fetching genders:', err);
+      setError(t('game.fetchError')); 
     } finally {
       setIsLoading(false);
     }
   };
 
-  const fetchStatements = async (categoryId: string) => {
+  const startGame = async () => {
+    if (!selectedCategory || !selectedGender) return;
+    
     try {
       setIsLoading(true);
-      setError(null);
+      let query = supabase.from('fuck_marry_kill_statements').select('*');
       
-      if (categoryId === RANDOM_CATEGORY_ID) {
-        let allStatements: Statement[] = [];
-        let hasMore = true;
-        let currentOffset = 0;
-
-        // Fetch all statements in batches
-        while (hasMore) {
-          const { data, error } = await supabase
-            .from('fuck_marry_kill_statements')
-            .select('*')
-            .range(currentOffset, currentOffset + BATCH_SIZE - 1);
-
-          if (error) throw error;
-
-          if (data && data.length > 0) {
-            allStatements = [...allStatements, ...data];
-            currentOffset += BATCH_SIZE;
-          } else {
-            hasMore = false;
-          }
-        }
-
-        // Shuffle all collected statements
-        for (let i = allStatements.length - 1; i > 0; i--) {
-          const j = Math.floor(Math.random() * (i + 1));
-          [allStatements[i], allStatements[j]] = [allStatements[j], allStatements[i]];
-        }
-
-        setStatements(allStatements);
-        setHasMoreStatements(false); // Random mode doesn't support pagination
-        setCurrentStatement(0);
-        return;
+      // Apply filters
+      if (selectedCategory !== 'random') {
+        query = query.eq('category_id', selectedCategory);
+      }
+      if (selectedGender !== 'mixed') {
+        query = query.eq('gender_id', selectedGender);
       }
 
-      const { data, error } = await supabase
-        .from('fuck_marry_kill_statements')
-        .select('*')
-        .eq('category_id', categoryId);
-      
+      const { data, error } = await query;
       if (error) throw error;
+
+      // Shuffle statements
+      const shuffled = [...(data || [])].sort(() => Math.random() - 0.5);
+      setStatements(shuffled);
       
-      // Shuffle the statements before setting them
-      const shuffledData = data ? [...data] : [];
-      for (let i = shuffledData.length - 1; i > 0; i--) {
-        const j = Math.floor(Math.random() * (i + 1));
-        [shuffledData[i], shuffledData[j]] = [shuffledData[j], shuffledData[i]];
+      // Set first round
+      if (shuffled.length >= 3) {
+        const firstRound = shuffled.slice(0, 3);
+        setCurrentRound(firstRound);
+        setChoices(firstRound.map(s => ({ id: s.id, choice: null })));
+        setGameStarted(true);
+      } else {
+        setError(t('fuckMarryKill.notEnoughStatements'));
       }
-      
-      setStatements(shuffledData);
-      setHasMoreStatements(false); // We now fetch all statements at once
-      setCurrentStatement(0);
     } catch (err) {
-      setError('Failed to load statements');
-      console.error(err);
+      console.error('Error starting game:', err);
+      setError(t('game.fetchError'));
     } finally {
       setIsLoading(false);
     }
   };
+
+  const makeChoice = (statementId: string, choice: 'fuck' | 'marry' | 'kill') => {
+    setChoices(prev => {
+      const newChoices = [...prev];
+      const choiceIndex = newChoices.findIndex(c => c.id === statementId);
+      const currentChoice = newChoices[choiceIndex].choice;
+      
+      // If clicking the same choice, uncheck it
+      if (currentChoice === choice) {
+        newChoices[choiceIndex].choice = null;
+      } else {
+        // Remove the choice from other statements if already used
+        const existingChoiceIndex = newChoices.findIndex(c => c.choice === choice);
+        if (existingChoiceIndex !== -1) {
+          newChoices[existingChoiceIndex].choice = null;
+        }
+        
+        // Set the new choice
+        newChoices[choiceIndex].choice = choice;
+      }
+      
+      if (choiceIndex !== -1) {
+        // Keep the choice state
+      }
+      
+      return newChoices;
+    });
+  };
+
+  const nextRound = () => {
+    const currentIndex = statements.indexOf(currentRound[2]);
+    if (currentIndex < statements.length - 3) {
+      const nextThree = statements.slice(currentIndex + 1, currentIndex + 4);
+      setCurrentRound(nextThree);
+      setChoices(nextThree.map(s => ({ id: s.id, choice: null })));
+    } else {
+      // Reshuffle and start over
+      const shuffled = [...statements].sort(() => Math.random() - 0.5);
+      setStatements(shuffled);
+      setCurrentRound(shuffled.slice(0, 3));
+      setChoices(shuffled.slice(0, 3).map(s => ({ id: s.id, choice: null })));
+    }
+  };
+
+  const isChoiceDisabled = (choice: 'fuck' | 'marry' | 'kill') => {
+    return choices.some(c => c.choice === choice);
+  };
+
+  const areAllChoicesMade = () => {
+    return choices.every(c => c.choice !== null);
+  };
+
+  if (isLoading) {
+    return (
+      <View style={styles.container}>
+        <ActivityIndicator size="large" color="#6C5CE7" />
+      </View>
+    );
+  }
 
   if (!gameStarted) {
     return (
-      <ScrollView 
-        style={styles.container} 
-        contentContainerStyle={styles.categoryScrollContent}
-        bounces={true}
-        showsVerticalScrollIndicator={true}>
-        <View style={styles.innerContainer}>
-        <Text style={styles.title}>
-          {t('fuckMarryKill.categories.title')}
-        </Text>
-        
-        <View style={styles.dropdownContainer}>
-          <Pressable
-            style={styles.dropdown}
-            onPress={() => setDropdownOpen(!dropdownOpen)}>
-            <Text style={styles.dropdownText}>
-              {selectedCategory
-                ? categories.find(c => c.id === selectedCategory)?.[`name_${language}` as keyof typeof categories[0]]
-                : t('game.selectCategory')}
-            </Text>
-            <MaterialCommunityIcons
-              name={dropdownOpen ? 'chevron-up' : 'chevron-down'}
-              size={24}
-              color="#000"
-            />
-          </Pressable>
-          
-          {dropdownOpen && (
-            <View style={styles.dropdownList}>
-              {categories.map((category) => (
+      <ScrollView style={styles.container}>
+        <View style={styles.content}>
+          <Text style={styles.title}>{t('fuckMarryKill.title')}</Text>
+          <Text style={styles.description}>{t('fuckMarryKill.description')}</Text>
+
+          {/* Gender Selection */}
+          <View style={[styles.dropdownContainer, dropdownOpen === 'gender' && styles.activeDropdown]}>
+            <Pressable
+              style={styles.dropdown}
+              onPress={() => setDropdownOpen(dropdownOpen === 'gender' ? null : 'gender')}>
+              <Text style={styles.dropdownText}>
+                {selectedGender === 'mixed'
+                  ? t('fuckMarryKill.allGenders')
+                  : selectedGender
+                    ? genders.find(g => g.id === selectedGender)?.[`name_${language}` as keyof typeof genders[0]]
+                    : t('fuckMarryKill.selectGender')}
+              </Text>
+              <MaterialCommunityIcons
+                name={dropdownOpen === 'gender' ? 'chevron-up' : 'chevron-down'}
+                size={24}
+                color="#000"
+              />
+            </Pressable>
+            
+            {dropdownOpen === 'gender' && (
+              <View style={styles.dropdownList}>
                 <Pressable
-                  key={category.id}
-                  style={[
-                    styles.dropdownItem,
-                    selectedCategory === category.id && styles.selectedDropdownItem,
-                  ]}
+                  style={[styles.dropdownItem, selectedGender === 'mixed' && styles.selectedDropdownItem]}
                   onPress={() => {
-                    setSelectedCategory(category.id);
-                    setDropdownOpen(false);
+                    setSelectedGender('mixed');
+                    setDropdownOpen(null);
                   }}>
-                  <Text
-                    style={[
-                      styles.dropdownItemText,
-                      selectedCategory === category.id && styles.selectedDropdownItemText,
-                    ]}>
-                    {category[`name_${language}` as keyof typeof category]}
+                  <Text style={[styles.dropdownItemText, selectedGender === 'mixed' && styles.selectedDropdownItemText]}>
+                    {t('fuckMarryKill.mixed')}
                   </Text>
                 </Pressable>
-              ))}
-            </View>
-          )}
+                {genders.map(gender => (
+                  <Pressable
+                    key={gender.id}
+                    style={[styles.dropdownItem, selectedGender === gender.id && styles.selectedDropdownItem]}
+                    onPress={() => {
+                      setSelectedGender(gender.id);
+                      setDropdownOpen(null);
+                    }}>
+                    <Text style={[styles.dropdownItemText, selectedGender === gender.id && styles.selectedDropdownItemText]}>
+                      {gender[`name_${language}` as keyof typeof gender]}
+                    </Text>
+                  </Pressable>
+                ))}
+              </View>
+            )}
+          </View>
+
+          {/* Category Selection */}
+          <View style={[styles.dropdownContainer, dropdownOpen === 'category' && styles.activeDropdown]}>
+            <Pressable
+              style={styles.dropdown}
+              onPress={() => setDropdownOpen(dropdownOpen === 'category' ? null : 'category')}>
+              <Text style={styles.dropdownText}>
+                {selectedCategory === 'random'
+                  ? t('game.randomCategory')
+                  : selectedCategory
+                    ? categories.find(c => c.id === selectedCategory)?.[`name_${language}` as keyof typeof categories[0]]
+                    : t('fuckMarryKill.selectCategory')}
+              </Text>
+              <MaterialCommunityIcons
+                name={dropdownOpen === 'category' ? 'chevron-up' : 'chevron-down'}
+                size={24}
+                color="#000"
+              />
+            </Pressable>
+            
+            {dropdownOpen === 'category' && (
+              <View style={styles.dropdownList}>
+                <Pressable
+                  style={[styles.dropdownItem, selectedCategory === 'random' && styles.selectedDropdownItem]}
+                  onPress={() => {
+                    setSelectedCategory('random');
+                    setDropdownOpen(null);
+                  }}>
+                  <Text style={[styles.dropdownItemText, selectedCategory === 'random' && styles.selectedDropdownItemText]}>
+                    {t('game.randomCategory')}
+                  </Text>
+                </Pressable>
+                {categories.map(category => (
+                  <Pressable
+                    key={category.id}
+                    style={[styles.dropdownItem, selectedCategory === category.id && styles.selectedDropdownItem]}
+                    onPress={() => {
+                      setSelectedCategory(category.id);
+                      setDropdownOpen(null);
+                    }}>
+                    <Text style={[styles.dropdownItemText, selectedCategory === category.id && styles.selectedDropdownItemText]}>
+                      {category[`name_${language}` as keyof typeof category]}
+                    </Text>
+                  </Pressable>
+                ))}
+              </View>
+            )}
+          </View>
         </View>
 
         <Pressable
           style={[
             styles.startButton,
-            !selectedCategory && styles.startButtonDisabled,
+            (!selectedCategory || !selectedGender) && styles.disabledButton
           ]}
-          onPress={() => setGameStarted(true)}
-          disabled={!selectedCategory}>
-          <Text style={styles.startButtonText}>
-            {t('game.startGame')}
-          </Text>
+          onPress={startGame}
+          disabled={!selectedCategory || !selectedGender}>
+          <Text style={styles.startButtonText}>{t('fuckMarryKill.getOptions')}</Text>
         </Pressable>
-        </View>
       </ScrollView>
     );
   }
 
-  const currentS = statements[currentStatement] || null;
-
   return (
-    <ScrollView 
-      style={styles.container} 
-      contentContainerStyle={styles.gameScrollContent}
-      bounces={true}
-      showsVerticalScrollIndicator={true}>
-      <Pressable
-        onPress={goBackToCategories}
-        style={styles.backButton}>
-        <MaterialCommunityIcons
-          name="arrow-left"
-          size={24}
-          color="#000"
-        />
-        <Text style={styles.backButtonText}>
-          {t('game.back')}
-        </Text>
-      </Pressable>
-
-      <Text style={styles.title}>
-        {categories.find(c => c.id === selectedCategory)?.[`name_${language}` as keyof typeof categories[0]]}
-      </Text>
-      
-      <View style={styles.statementContainer}>
-        {currentS ? (
-          <View style={styles.statement}>
-            <Text style={styles.statementText}>
-              {currentS[`text_${language}` as keyof typeof currentS]}
-            </Text>
-          </View>
-        ) : (
-          <Text style={styles.errorText}>
-            {t('game.noStatements')}
-          </Text>
-        )}
+    <ScrollView style={styles.container}>
+      <View style={styles.gameHeader}>
+        <Pressable
+          style={styles.backButton}
+          onPress={() => {
+            setGameStarted(false);
+            setSelectedCategory(null);
+            setSelectedGender(null);
+            setCurrentRound([]);
+            setChoices([]);
+          }}>
+          <MaterialCommunityIcons name="arrow-left" size={24} color="#333" />
+          <Text style={styles.backButtonText}>{t('game.back')}</Text>
+        </Pressable>
+        <Text style={styles.roundTitle}>{t('fuckMarryKill.makeYourChoices')}</Text>
       </View>
 
-      <Pressable
-        style={styles.nextButton}
-        onPress={() => setCurrentStatement(prev => prev + 1)}>
-        <Text style={styles.nextButtonText}>
-          {t('game.next')}
-        </Text>
-      </Pressable>
+      <View style={styles.gameContent}>
+        {currentRound.map((statement, index) => (
+          <View key={statement.id} style={styles.optionCard}>
+            <Text style={styles.optionText}>
+              {statement[`text_${language}` as keyof typeof statement]}
+            </Text>
+            <View style={styles.choiceButtons}>
+              <Pressable
+                style={[
+                  styles.choiceButton,
+                  styles.fuckButton,
+                  choices.find(c => c.id === statement.id)?.choice === 'fuck' && styles.selectedChoice,
+                  isChoiceDisabled('fuck') && 
+                  choices.find(c => c.id === statement.id)?.choice !== 'fuck' && 
+                  styles.disabledChoice
+                ]}
+                onPress={() => makeChoice(statement.id, 'fuck')}
+                disabled={isChoiceDisabled('fuck') && choices.find(c => c.id === statement.id)?.choice !== 'fuck'}>
+                <Text style={styles.choiceButtonText}>{t('fuckMarryKill.fuck')}</Text>
+              </Pressable>
+              <Pressable
+                style={[
+                  styles.choiceButton,
+                  styles.marryButton,
+                  choices.find(c => c.id === statement.id)?.choice === 'marry' && styles.selectedChoice,
+                  isChoiceDisabled('marry') && 
+                  choices.find(c => c.id === statement.id)?.choice !== 'marry' && 
+                  styles.disabledChoice
+                ]}
+                onPress={() => makeChoice(statement.id, 'marry')}
+                disabled={isChoiceDisabled('marry') && choices.find(c => c.id === statement.id)?.choice !== 'marry'}>
+                <Text style={styles.choiceButtonText}>{t('fuckMarryKill.marry')}</Text>
+              </Pressable>
+              <Pressable
+                style={[
+                  styles.choiceButton,
+                  styles.killButton,
+                  choices.find(c => c.id === statement.id)?.choice === 'kill' && styles.selectedChoice,
+                  isChoiceDisabled('kill') && 
+                  choices.find(c => c.id === statement.id)?.choice !== 'kill' && 
+                  styles.disabledChoice
+                ]}
+                onPress={() => makeChoice(statement.id, 'kill')}
+                disabled={isChoiceDisabled('kill') && choices.find(c => c.id === statement.id)?.choice !== 'kill'}>
+                <Text style={styles.choiceButtonText}>{t('fuckMarryKill.kill')}</Text>
+              </Pressable>
+            </View>
+          </View>
+        ))}
+
+        <Pressable
+          style={[styles.nextButton, !areAllChoicesMade() && styles.disabledButton]}
+          onPress={nextRound}
+          disabled={!areAllChoicesMade()}>
+          <Text style={styles.nextButtonText}>{t('fuckMarryKill.nextOptions')}</Text>
+        </Pressable>
+      </View>
     </ScrollView>
   );
 }
@@ -287,39 +362,40 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#FFFFFF',
-    width: '100%',
   },
-  categoryScrollContent: {
-    flexGrow: 1,
-    minHeight: '100%',
-  },
-  gameScrollContent: {
-    flexGrow: 1,
-    minHeight: '100%',
-    paddingBottom: 20,
-  },
-  innerContainer: {
-    flex: 1,
+  content: {
     padding: 16,
+    position: 'relative',
+    zIndex: 1,
+  },
+  title: {
+    fontSize: 32,
+    fontWeight: 'bold',
+    color: '#000',
+    marginBottom: 8,
+    textAlign: 'center',
+  },
+  description: {
+    fontSize: 16,
+    color: '#666',
+    marginBottom: 24,
+    textAlign: 'center',
   },
   dropdownContainer: {
     position: 'relative',
-    zIndex: 1,
     marginBottom: 16,
+    zIndex: 3,
+  },
+  activeDropdown: {
+    zIndex: 4,
   },
   dropdown: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    padding: 16,
-    backgroundColor: '#F8F8F8',
+    backgroundColor: '#F8F8F8', 
     borderRadius: 12,
-    borderWidth: 1,
-    borderColor: '#E0E0E0',
-  },
-  dropdownText: {
-    fontSize: 16,
-    color: '#000',
+    padding: 16,
+    flexDirection: 'row',
+    alignItems: 'center', 
+    justifyContent: 'space-between'
   },
   dropdownList: {
     position: 'absolute',
@@ -329,99 +405,136 @@ const styles = StyleSheet.create({
     backgroundColor: '#FFFFFF',
     borderRadius: 12,
     marginTop: 4,
-    padding: 8,
+    maxHeight: 200,
+    overflow: 'scroll',
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.25,
-    shadowRadius: 3.84,
+    shadowOpacity: 0.1,
+    shadowRadius: 8,
     elevation: 8,
-    zIndex: 1000,
-    overflow: 'scroll'
+    zIndex: 999,
   },
   dropdownItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
     padding: 12,
     borderRadius: 8,
-    marginVertical: 2,
+    marginHorizontal: 8,
+    marginVertical: 4,
   },
   selectedDropdownItem: {
     backgroundColor: '#6C5CE7',
   },
+  dropdownText: {
+    fontSize: 16,
+    color: '#000',
+  },
   dropdownItemText: {
     fontSize: 16,
     color: '#000',
-    width: '100%',
   },
   selectedDropdownItemText: {
-    color: '#000',
-  },
-  backButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    padding: 12,
-  },
-  backButtonText: {
-    fontSize: 16,
-    marginLeft: 8,
-    color: '#000',
-  },
-  title: {
-    fontSize: 28,
+    color: '#FFF',
     fontWeight: 'bold',
-    textAlign: 'center',
-    marginVertical: 12,
-    paddingHorizontal: 16,
-    color: '#000',
-  },
-  statementContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    padding: 16,
-    minHeight: 300,
   },
   startButton: {
     backgroundColor: '#6C5CE7',
-    padding: 16,
+    paddingVertical: 16,
+    paddingHorizontal: 32,
     borderRadius: 12,
-    alignItems: 'center',
-  },
-  startButtonDisabled: {
-    backgroundColor: '#E0E0E0',
+    marginHorizontal: 20,
+    marginTop: 40,
+    marginBottom: 40,
+    position: 'relative',
+    zIndex: 0,
   },
   startButtonText: {
     color: '#FFFFFF',
     fontSize: 18,
     fontWeight: 'bold',
-  },
-  statement: {
-    padding: 32,
-    backgroundColor: '#6C5CE7',
-    borderRadius: 15,
-    minHeight: 200,
-    justifyContent: 'center',
-  },
-  statementText: {
-    color: '#FFFFFF',
-    fontSize: 24,
     textAlign: 'center',
+  },
+  disabledButton: {
+    backgroundColor: '#E0E0E0',
+  },
+  gameHeader: {
+    padding: 20,
+    borderBottomWidth: 1,
+    borderBottomColor: '#F0F0F0',
+  },
+  backButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  backButtonText: {
+    fontSize: 16,
+    color: '#333',
+    marginLeft: 8,
+  },
+  roundTitle: {
+    fontSize: 24,
     fontWeight: 'bold',
+    color: '#333',
+    textAlign: 'center',
+  },
+  gameContent: {
+    padding: 20,
+  },
+  optionCard: {
+    backgroundColor: '#F8F8F8',
+    borderRadius: 16,
+    padding: 16,
+    marginBottom: 16,
+  },
+  optionText: {
+    fontSize: 20,
+    fontWeight: '600',
+    color: '#333',
+    marginBottom: 12,
+    textAlign: 'center',
+  },
+  choiceButtons: {
+    flexDirection: 'row',
+    gap: 6,
+    justifyContent: 'space-between',
+  },
+  choiceButton: {
+    flex: 1,
+    paddingVertical: 10,
+    paddingHorizontal: 6,
+    borderRadius: 8,
+    alignItems: 'center',
+  },
+  fuckButton: {
+    backgroundColor: '#FF9500',
+  },
+  marryButton: {
+    backgroundColor: '#34C759',
+  },
+  killButton: {
+    backgroundColor: '#FF3B30',
+  },
+  selectedChoice: {
+    opacity: 1,
+    transform: [{ scale: 1.05 }],
+  },
+  disabledChoice: {
+    opacity: 0.5,
+  },
+  choiceButtonText: {
+    color: '#FFFFFF',
+    fontSize: 14,
+    fontWeight: '600',
   },
   nextButton: {
     backgroundColor: '#6C5CE7',
-    padding: 20,
-    borderRadius: 16,
-    margin: 16
-  },
-  errorText: {
-    color: '#FF3B30',
-    fontSize: 16,
-    textAlign: 'center',
+    paddingVertical: 16,
+    borderRadius: 12,
+    marginTop: 20,
   },
   nextButtonText: {
     color: '#FFFFFF',
-    textAlign: 'center',
     fontSize: 18,
     fontWeight: 'bold',
+    textAlign: 'center',
   }
 });

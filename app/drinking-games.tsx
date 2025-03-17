@@ -148,6 +148,7 @@ export default function DrinkingGames() {
   const [currentPage, setCurrentPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
   const [isLoadingMore, setIsLoadingMore] = useState(false);
+  const [totalGames, setTotalGames] = useState(0);
 
   const debouncedSearch = useCallback(
     debounce((query: string) => {
@@ -160,6 +161,30 @@ export default function DrinkingGames() {
   const fetchGames = async () => {
     try {
       setIsLoading(true);
+      
+      // First get total count with filters but no pagination
+      let countQuery = supabase
+        .from('drinking_games')
+        .select('*', { count: 'exact', head: true })
+        .eq('language', language);
+
+      if (searchQuery) {
+        countQuery = countQuery.or(`game_name.ilike.%${searchQuery}%,description.ilike.%${searchQuery}%`);
+      }
+      if (selectedTypes.length > 0) {
+        countQuery = countQuery.in('type', selectedTypes);
+      }
+      if (selectedCountries.length > 0) {
+        countQuery = countQuery.overlaps('countries', selectedCountries);
+      }
+      if (selectedMaterials.length > 0) {
+        countQuery = countQuery.contains('materials', selectedMaterials);
+      }
+
+      const { count: totalCount } = await countQuery;
+      setTotalGames(totalCount || 0);
+      
+      // Then fetch paginated data
       const start = (currentPage - 1) * ITEMS_PER_PAGE;
       const end = start + ITEMS_PER_PAGE - 1;
 
@@ -272,8 +297,12 @@ export default function DrinkingGames() {
 
   return (
     <ScrollView style={styles.container}>
-      <Text style={styles.title}>{t('drinkingGames.title')}</Text>
-      <Text style={styles.description}>{t('drinkingGames.description')}</Text>
+      <View style={styles.headerContainer}>
+        <Text style={styles.title}>{t('drinkingGames.title')}</Text>
+        <Text style={styles.description}>
+          {t('drinkingGames.description')} • {totalGames} {t('drinkingGames.gamesAvailable')}
+        </Text>
+      </View>
 
       <View style={styles.searchContainer}>
         <MaterialCommunityIcons name="magnify" size={24} color="#666" />
@@ -443,7 +472,7 @@ export default function DrinkingGames() {
 
             <View style={styles.paginationInfo}>
               <Text style={styles.paginationText}>
-                {t('drinkingGames.pagination.page', { current: currentPage, total: totalPages })}
+                {`${currentPage} / ${totalPages}`}
               </Text>
             </View>
 
@@ -467,7 +496,11 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#FFFFFF',
+  },
+  headerContainer: {
+    backgroundColor: '#F8F8F8',
     padding: 20,
+    marginBottom: 20,
   },
   title: {
     fontSize: 28,
@@ -481,7 +514,12 @@ const styles = StyleSheet.create({
     color: '#666',
     marginBottom: 24,
     textAlign: 'center',
-    paddingHorizontal: 12,
+    paddingHorizontal: 16,
+  },
+  inputContainer: {
+    padding: 20,
+    marginBottom: 16,
+    flexDirection: 'row',
   },
   searchContainer: {
     flexDirection: 'row',
@@ -778,12 +816,13 @@ const styles = StyleSheet.create({
   paginationInfo: {
     backgroundColor: '#F8F8F8',
     paddingVertical: 8,
-    paddingHorizontal: 16,
+    paddingHorizontal: 24,
     borderRadius: 8,
   },
   paginationText: {
     color: '#666',
-    fontSize: 14,
+    fontSize: 16,
+    fontWeight: '500',
   },
   noGamesText: {
     textAlign: 'center',

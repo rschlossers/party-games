@@ -1,8 +1,35 @@
-import { View, Text, StyleSheet, ScrollView, Pressable } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, Pressable, Image } from 'react-native';
 import { Link } from 'expo-router';
-import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useLanguage } from '../utils/i18n';
 import { useGameSettings } from '../utils/gameSettings';
+import { GameSlider } from '../components/GameSlider';
+
+// Game icons mapping
+const gameIcons = {
+  'back-to-back': require('../assets/images/game-icons/back-to-back.png'),
+  'everyone-who-stands': require('../assets/images/game-icons/everyone-who-stands.png'),
+  'best-story-wins': require('../assets/images/game-icons/best-story-wins.png'),
+  'charades': require('../assets/images/game-icons/charades.png'),
+  'do-or-drink': require('../assets/images/game-icons/do-or-drink.png'),
+  'bad-movie-plots': require('../assets/images/game-icons/bad-movie-plots.png'),
+  'i-should-know-that': require('../assets/images/game-icons/i-should-know-that.png'),
+  'i-wish-i-didnt-know-that': require('../assets/images/game-icons/i-wish-i-didnt-know-that.png'),
+  'photo-challenges': require('../assets/images/game-icons/photo-challenges.png'),
+  'pictionary': require('../assets/images/game-icons/pictionary.png'),
+  'whats-your-number': require('../assets/images/game-icons/whats\'your-number.png'),
+  'you-laugh-you-drink': require('../assets/images/game-icons/you-laugh-you-drink.png'),
+  'you-lie-you-drink': require('../assets/images/game-icons/you-lie-you-drink.png'),
+  'would-you-rather': require('../assets/images/game-icons/would-you-rather.png'),
+  'who-in-the-room': require('../assets/images/game-icons/who-in-the-room.png'),
+  'truth-or-dare': require('../assets/images/game-icons/truth-or-dare.png'),
+  'truth-or-bullshit': require('../assets/images/game-icons/truth-or-bullshit.png'),
+  'taskmaster': require('../assets/images/game-icons/taskmaster.png'),
+  'say-the-same-thing': require('../assets/images/game-icons/say-the-same-thing.png'),
+  'never-have-i-ever': require('../assets/images/game-icons/never-have-i-ever.png'),
+  'impressions': require('../assets/images/game-icons/impressions.png'),
+  'fuck-marry-kill': require('../assets/images/game-icons/fuck-marry-kill.png'),
+  'video-challenges': require('../assets/images/game-icons/video-challenges.png')
+} as const;
 
 export default function PartyGames() {
   const { t, language } = useLanguage();
@@ -13,81 +40,33 @@ export default function PartyGames() {
     .filter(game => game.enabled && game.dashboard === 'party')
     .sort((a, b) => t(a.titleKey).localeCompare(t(b.titleKey), language)) : [];
 
-  // Game color assignments based on icon
-  function getGameColor(gameId: string) {
-    const colorMap: Record<string, string> = {
-      'never-have-i-ever': '#FF5252',
-      'everyone-who-stands': '#2196F3',
-      'best-story-wins': '#4CAF50',
-      'i-should-know-that': '#FFC107',
-      'i-wish-i-didnt-know-that': '#9C27B0',
-      'you-laugh-you-drink': '#FF9800',
-      'you-lie-you-drink': '#F44336',
-      'charades': '#3F51B5',
-      'whats-your-number': '#009688',
-      'would-you-rather': '#673AB7',
-      'who-in-the-room': '#00BCD4',
-      'impressions': '#E91E63',
-      'back-to-back': '#8BC34A',
-      'taskmaster': '#FFEB3B',
-      'pictionary': '#795548',
-      'truth-or-dare': '#FF5722',
-    };
-    return colorMap[gameId] || '#6C5CE7'; // Default purple color
-  }
-
   return (
     <ScrollView style={styles.container}>
       <Text style={styles.title}>{t('index.page')}</Text>
       <Text style={styles.description}>{t('index.description')}</Text>
       
-      <View style={styles.cardList}>
-        {/* Dynamically render enabled games */}
-        {enabledGames.map(game => (
-          <Link key={game.id} href={`/${game.path}`} asChild>
-            <Pressable style={styles.card}>
-              <View style={[styles.iconContainer, { backgroundColor: getGameColor(game.id) }]}>
-                <MaterialCommunityIcons
-                  name={game.icon}
-                  size={32}
-                  color="#FFF"
-                />
-              </View>
-              <View style={styles.cardTextContent}>
-                <Text style={styles.cardTitle}>
+      <GameSlider />
+      
+      <View style={styles.gamesGrid}>
+        {enabledGames.map(game => {
+          const icon = gameIcons[game.id as keyof typeof gameIcons];
+          if (!icon) return null;
+
+          return (
+            <Link key={game.id} href={`/${game.path}`} asChild>
+              <Pressable style={styles.gameCard}>
+                <Image
+                  source={icon}
+                  style={styles.gameIcon}
+                  resizeMode="cover"
+                  />
+                <Text style={styles.gameTitle}>
                   {t(game.titleKey)}
                 </Text>
-                <Text style={styles.cardDescription}>
-                  {t(game.descriptionKey)}
-                </Text>
-              </View>
-              <MaterialCommunityIcons
-                name="chevron-right"
-                size={24}
-                color="#6C5CE7"
-              />
-            </Pressable>
-          </Link>
-        ))}
-
-        {/* Coming Soon Card */}
-        <View style={[styles.card, styles.comingSoonCard]}>
-          <View style={[styles.iconContainer, { backgroundColor: '#CCCCCC' }]}>
-            <MaterialCommunityIcons
-              name="clock-outline"
-              size={32}
-              color="#FFF"
-            />
-          </View>
-          <View style={styles.cardTextContent}>
-            <Text style={styles.comingSoonTitle}>
-              {t('index.comingSoon')}
-            </Text>
-            <Text style={styles.comingSoonDescription}>
-              {t('index.moreGames')}
-            </Text>
-          </View>
-        </View>
+              </Pressable>
+            </Link>
+          );
+        })}
       </View>
     </ScrollView>
   );
@@ -97,7 +76,7 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#FFFFFF',
-    padding: 20,
+    paddingVertical: 20,
   },
   title: {
     fontSize: 28,
@@ -113,56 +92,37 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     paddingHorizontal: 12,
   },
-  cardList: {
-    gap: 16,
-  },
-  card: {
-    backgroundColor: '#fff',
-    borderRadius: 16,
+  gamesGrid: {
     flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 16,
+    paddingHorizontal: 20,
+    justifyContent: 'center',
+    paddingVertical: 16,
+  },
+  gameCard: {
+    width: 140,
     alignItems: 'center',
-    padding: 16,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 20,
+    padding: 12,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.1,
     shadowRadius: 8,
     elevation: 3,
   },
-  iconContainer: {
-    width: 56,
-    height: 56,
-    borderRadius: 28,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginRight: 16,
+  gameIcon: {
+    width: 100,
+    height: 100,
+    borderRadius: 16,
+    marginBottom: 12,
   },
-  cardTextContent: {
-    flex: 1,
-  },
-  cardTitle: {
-    color: '#000',
-    fontSize: 18,
-    fontWeight: 'bold',
-    marginBottom: 4,
-  },
-  cardDescription: {
-    color: '#666',
-    fontSize: 14,
-    lineHeight: 20,
-  },
-  comingSoonCard: {
-    backgroundColor: '#F8F8F8',
-    opacity: 0.8,
-  },
-  comingSoonTitle: {
-    color: '#666',
-    fontSize: 18,
-    fontWeight: 'bold',
-    marginBottom: 4,
-  },
-  comingSoonDescription: {
-    color: '#999',
-    fontSize: 14,
-    lineHeight: 20,
-  },
+  gameTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#333',
+    textAlign: 'center',
+    lineHeight: 20
+  }
 });
